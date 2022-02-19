@@ -8,8 +8,8 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from .exeptions import (EndpointUnavailableError, ResponseEmptyError,
-                        UndocumentedStatusError)
+from exeptions import (EndpointUnavailableError, ResponseEmptyError,
+                       UndocumentedStatusError)
 
 # Подгружаем переменные окружения.
 load_dotenv()
@@ -109,76 +109,43 @@ def check_tokens() -> bool:
 
 def main() -> None:
     """Основная логика работы бота."""
-    if check_tokens():
-
-        bot = telegram.Bot(token=TELEGRAM_TOKEN)
-        current_timestamp = 0
-
-        current_status = 0
-
-        count_errors_get_api_answer = 0
-        count_errors_check_response = 0
-        count_errors_parse_status = 0
-
-        while True:
-            try:
-                try:
-                    response = get_api_answer(current_timestamp)
-                except EndpointUnavailableError as mess_error:
-                    count_errors_get_api_answer += 1
-                    logging.error(mess_error)
-                    if count_errors_get_api_answer == 1:
-                        send_message(
-                            bot,
-                            mess_error
-                        )
-                except Exception as error:
-                    logging.error(f'Обнаружена ошибка - {error}')
-
-                try:
-                    homeworks = check_response(response)
-                except KeyError as mess_error:
-                    count_errors_check_response += 1
-                    if count_errors_check_response == 1:
-                        send_message(
-                            bot,
-                            mess_error
-                        )
-                except Exception as error:
-                    logging.error(f'Обнаружена ошибка - {error}')
-
-                if homeworks:
-                    try:
-                        status = parse_status(homeworks[0])
-                        if current_status != status:
-                            current_status = status
-                            send_message(bot, status)
-                    except UndocumentedStatusError as mess_error:
-                        count_errors_parse_status += 1
-                        logging.error(mess_error)
-                        if count_errors_parse_status == 1:
-                            send_message(
-                                bot,
-                                mess_error
-                            )
-                    except Exception as error:
-                        logging.error(f'Обнаружена ошибка - {error}')
-                else:
-                    logging.debug('Отсутствие в ответе новых статусов')
-
-                current_timestamp = int(time.time())
-                time.sleep(RETRY_TIME)
-
-            except Exception as error:
-                message = f'Сбой в работе программы: {error}'
-                send_message(bot, message)
-                time.sleep(RETRY_TIME)
-    else:
+    if not check_tokens():
         logging.critical(
             'Отсутствие обязательных переменных окружения'
             'во время запуска бота'
         )
         os._exit()
+
+    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    current_timestamp = 0
+
+    current_status = 0
+    error_dict_counter = {}
+
+    while True:
+        try:
+            response = get_api_answer(current_timestamp)
+            homeworks = check_response(response)
+            if homeworks:
+                status = parse_status(homeworks[0])
+                if current_status != status:
+                    current_status = status
+                    send_message(bot, status)
+            else:
+                logging.debug('Отсутствие в ответе новых статусов')
+
+            current_timestamp = int(time.time())
+            time.sleep(RETRY_TIME)
+
+        except Exception as error:
+            message = f'Сбой в работе программы: {error}'
+            logging.error(error)
+
+            if not error_dict_counter.get(error.__class__):
+                send_message(bot, message)
+                error_dict_counter[error.__class__] = 1
+
+            time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
