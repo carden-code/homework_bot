@@ -8,8 +8,8 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exeptions import (EndpointUnavailableError, ResponseEmptyError,
-                       UndocumentedStatusError)
+from .exeptions import (EndpointUnavailableError, ResponseEmptyError,
+                        UndocumentedStatusError)
 
 # Подгружаем переменные окружения.
 load_dotenv()
@@ -39,7 +39,7 @@ logging.StreamHandler(sys.stdout)
 
 
 def send_message(bot, message) -> None:
-    """Отправляет сообщение в Telegram чат"""
+    """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -51,7 +51,7 @@ def send_message(bot, message) -> None:
 
 
 def get_api_answer(current_timestamp) -> json:
-    """Делает запрос к эндпоинту API-сервиса"""
+    """Делает запрос к эндпоинту API-сервиса."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
 
@@ -62,7 +62,7 @@ def get_api_answer(current_timestamp) -> json:
 
 
 def check_response(response) -> list:
-    """Проверяет ответ API на корректность"""
+    """Проверяет ответ API на корректность."""
     keys_to_check = ['homeworks', 'current_date']
     if not response:
         raise ResponseEmptyError()
@@ -83,7 +83,7 @@ def check_response(response) -> list:
 
 def parse_status(homework) -> str:
     """Извлекает из информации о конкретной
-        домашней работе статус этой работы"""
+        домашней работе статус этой работы."""
     homework_name = homework.get('homework_name')
     if not homework_name:
         raise KeyError('Отсутствует ключ - homework_name')
@@ -101,7 +101,7 @@ def parse_status(homework) -> str:
 
 
 def check_tokens() -> bool:
-    """Проверяет доступность переменных окружения"""
+    """Проверяет доступность переменных окружения."""
     if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         return True
     return False
