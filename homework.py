@@ -19,7 +19,7 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME = 10
+RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -64,7 +64,6 @@ def get_api_answer(current_timestamp) -> json:
 def check_response(response) -> list:
     """Проверяет ответ API на корректность"""
     keys_to_check = ['homeworks', 'current_date']
-    print(response)
     if not response:
         raise ResponseEmptyError()
 
@@ -73,7 +72,6 @@ def check_response(response) -> list:
 
     for key in keys_to_check:
         if key not in response:
-            print(response)
             mess = f'Ключ - {key} отсутствует в ответе API'
             raise KeyError(mess)
 
