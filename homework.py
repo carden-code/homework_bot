@@ -1,13 +1,25 @@
-...
+import json
+import logging
+import os
+import sys
+import time
 
+import requests
+import telegram
+from dotenv import load_dotenv
+
+from exeptions import (EndpointUnavailableError, ResponseEmptyError,
+                       UndocumentedStatusError)
+
+# Подгружаем переменные окружения.
 load_dotenv()
 
 
-PRACTICUM_TOKEN = ...
-TELEGRAM_TOKEN = ...
-TELEGRAM_CHAT_ID = ...
+PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME = 600
+RETRY_TIME = 10
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -18,65 +30,157 @@ HOMEWORK_STATUSES = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+# Подключаем логирование.
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
+)
+logging.StreamHandler(sys.stdout)
 
-def send_message(bot, message):
-    ...
+
+def send_message(bot, message) -> None:
+    """Отправляет сообщение в Telegram чат"""
+    try:
+        bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=message
+        )
+        logging.info('Сообщение удачно отправлено')
+    except Exception as error:
+        logging.error(f'Сбой при отправке сообщения в Telegram - {error}')
 
 
-def get_api_answer(current_timestamp):
+def get_api_answer(current_timestamp) -> json:
+    """Делает запрос к эндпоинту API-сервиса"""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
 
-    ...
+    response = requests.get(url=ENDPOINT, headers=HEADERS, params=params)
+    if response.status_code != 200:
+        raise EndpointUnavailableError()
+    return response.json()
 
 
-def check_response(response):
+def check_response(response) -> list:
+    """Проверяет ответ API на корректность"""
+    keys_to_check = ['homeworks', 'current_date']
+    print(response)
+    if not response:
+        raise ResponseEmptyError()
 
-    ...
+    if not isinstance(response, dict):
+        raise TypeError()
+
+    for key in keys_to_check:
+        if key not in response:
+            print(response)
+            mess = f'Ключ - {key} отсутствует в ответе API'
+            raise KeyError(mess)
+
+    homeworks = response.get('homeworks')
+    if not isinstance(homeworks, list):
+        raise TypeError('Домашки приходят не в виде списка в ответ от API')
+    return homeworks
 
 
-def parse_status(homework):
-    homework_name = ...
-    homework_status = ...
+def parse_status(homework) -> str:
+    """Извлекает из информации о конкретной
+        домашней работе статус этой работы"""
+    homework_name = homework.get('homework_name')
+    if not homework_name:
+        raise KeyError('Отсутствует ключ - homework_name')
 
-    ...
+    homework_status = homework.get('status')
+    if not homework_status:
+        raise KeyError('Отсутствует ключ - homework_status')
 
-    verdict = ...
+    if homework_status not in HOMEWORK_STATUSES:
+        raise UndocumentedStatusError
 
-    ...
+    verdict = HOMEWORK_STATUSES.get(homework_status)
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
-def check_tokens():
-    ...
+def check_tokens() -> bool:
+    """Проверяет доступность переменных окружения"""
+    if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        return True
+    return False
 
 
-def main():
+def main() -> None:
     """Основная логика работы бота."""
+    if check_tokens():
 
-    ...
+        bot = telegram.Bot(token=TELEGRAM_TOKEN)
+        current_timestamp = 0
 
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time())
+        current_status = 0
 
-    ...
+        count_errors_get_api_answer = 0
+        count_errors_check_response = 0
+        count_errors_parse_status = 0
 
-    while True:
-        try:
-            response = ...
+        while True:
+            try:
+                try:
+                    response = get_api_answer(current_timestamp)
+                except EndpointUnavailableError as mess_error:
+                    count_errors_get_api_answer += 1
+                    logging.error(mess_error)
+                    if count_errors_get_api_answer == 1:
+                        send_message(
+                            bot,
+                            mess_error
+                        )
+                except Exception as error:
+                    logging.error(f'Обнаружена ошибка - {error}')
 
-            ...
+                try:
+                    homeworks = check_response(response)
+                except KeyError as mess_error:
+                    count_errors_check_response += 1
+                    if count_errors_check_response == 1:
+                        send_message(
+                            bot,
+                            mess_error
+                        )
+                except Exception as error:
+                    logging.error(f'Обнаружена ошибка - {error}')
 
-            current_timestamp = ...
-            time.sleep(RETRY_TIME)
+                if homeworks:
+                    try:
+                        status = parse_status(homeworks[0])
+                        if current_status != status:
+                            current_status = status
+                            send_message(bot, status)
+                    except UndocumentedStatusError as mess_error:
+                        count_errors_parse_status += 1
+                        logging.error(mess_error)
+                        if count_errors_parse_status == 1:
+                            send_message(
+                                bot,
+                                mess_error
+                            )
+                    except Exception as error:
+                        logging.error(f'Обнаружена ошибка - {error}')
+                else:
+                    logging.debug('Отсутствие в ответе новых статусов')
 
-        except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            ...
-            time.sleep(RETRY_TIME)
-        else:
-            ...
+                current_timestamp = int(time.time())
+                time.sleep(RETRY_TIME)
+
+            except Exception as error:
+                message = f'Сбой в работе программы: {error}'
+                send_message(bot, message)
+                time.sleep(RETRY_TIME)
+    else:
+        logging.critical(
+            'Отсутствие обязательных переменных окружения'
+            'во время запуска бота'
+        )
+        os._exit()
 
 
 if __name__ == '__main__':
