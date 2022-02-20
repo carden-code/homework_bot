@@ -114,9 +114,7 @@ def parse_status(homework) -> str:
 def check_tokens() -> bool:
     """Проверяет доступность переменных окружения."""
     environment_variables = [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
-    if all(environment_variables):
-        return True
-    return False
+    return all(environment_variables)
 
 
 def main() -> None:
