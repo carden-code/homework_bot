@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from http import HTTPStatus
 
 import requests
 import telegram
@@ -24,7 +25,7 @@ ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
 
-HOMEWORK_STATUSES = {
+HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
@@ -36,28 +37,39 @@ logging.basicConfig(
     format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
 )
 logging.StreamHandler(sys.stdout)
+logger = logging.getLogger(__name__)
 
 
-def send_message(bot, message) -> None:
+def send_message(bot, message) -> bool:
     """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
             text=message
         )
-        logging.info('Сообщение удачно отправлено')
+        logger.info('Сообщение удачно отправлено')
+        return True
     except Exception as error:
-        logging.error(f'Сбой при отправке сообщения в Telegram - {error}')
+        logger.error(f'Сбой при отправке сообщения в Telegram - {error}')
+        return False
 
 
 def get_api_answer(current_timestamp) -> json:
     """Делает запрос к эндпоинту API-сервиса."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
+    try:
+        response = requests.get(
+            url=ENDPOINT,
+            headers=HEADERS,
+            params=params
+        )
+        if response.status_code != HTTPStatus.OK:
+            raise EndpointUnavailableError()
+    except Exception as error:
+        logger.error(error)
+        raise Exception(error)
 
-    response = requests.get(url=ENDPOINT, headers=HEADERS, params=params)
-    if response.status_code != 200:
-        raise EndpointUnavailableError()
     return response.json()
 
 
@@ -84,24 +96,25 @@ def check_response(response) -> list:
 def parse_status(homework) -> str:
     """Извлекает статус о конкретной домашней работе."""
     homework_name = homework.get('homework_name')
-    if not homework_name:
+    if homework_name is None:
         raise KeyError('Отсутствует ключ - homework_name')
 
     homework_status = homework.get('status')
-    if not homework_status:
+    if homework_status is None:
         raise KeyError('Отсутствует ключ - homework_status')
 
-    if homework_status not in HOMEWORK_STATUSES:
+    if homework_status not in HOMEWORK_VERDICTS:
         raise UndocumentedStatusError
 
-    verdict = HOMEWORK_STATUSES.get(homework_status)
+    verdict = HOMEWORK_VERDICTS.get(homework_status)
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens() -> bool:
     """Проверяет доступность переменных окружения."""
-    if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+    environment_variables = [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
+    if all(environment_variables):
         return True
     return False
 
@@ -109,7 +122,7 @@ def check_tokens() -> bool:
 def main() -> None:
     """Основная логика работы бота."""
     if not check_tokens():
-        logging.critical(
+        logger.critical(
             'Отсутствие обязательных переменных окружения'
             'во время запуска бота'
         )
@@ -131,18 +144,18 @@ def main() -> None:
                     current_status = status
                     send_message(bot, status)
             else:
-                logging.debug('Отсутствие в ответе новых статусов')
+                logger.debug('Отсутствие в ответе новых статусов')
 
             current_timestamp = int(time.time())
             time.sleep(RETRY_TIME)
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            logging.error(error)
+            logger.error(error)
 
             if not error_dict_counter.get(error.__class__):
-                send_message(bot, message)
-                error_dict_counter[error.__class__] = 1
+                if send_message(bot, message):
+                    error_dict_counter[error.__class__] = 1
 
             time.sleep(RETRY_TIME)
 

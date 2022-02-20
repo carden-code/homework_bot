@@ -8,8 +8,7 @@ class EndpointUnavailableError(Exception):
     def __str__(self):
         if self.message:
             return f'EndpointUnavailableError, {self.message}'
-        else:
-            return 'EndpointUnavailableError - Эндпоинт не доступен.'
+        return 'EndpointUnavailableError - Эндпоинт не доступен.'
 
 
 class UndocumentedStatusError(Exception):
@@ -22,11 +21,10 @@ class UndocumentedStatusError(Exception):
     def __str__(self):
         if self.message:
             return f'UndocumentedStatusError, {self.message}'
-        else:
-            return (
-                'UndocumentedStatusError - '
-                'недокументированный статус домашней работы в ответе от API.'
-            )
+        return (
+            'UndocumentedStatusError - '
+            'недокументированный статус домашней работы в ответе от API.'
+        )
 
 
 class ResponseEmptyError(Exception):
@@ -39,7 +37,6 @@ class ResponseEmptyError(Exception):
     def __str__(self):
         if self.message:
             return f'ResponseEmptyError, {self.message}'
-        else:
-            return (
-                'ResponseEmptyError - ответ от API содержит пустой словарь.'
-            )
+        return (
+            'ResponseEmptyError - ответ от API содержит пустой словарь.'
+        )
